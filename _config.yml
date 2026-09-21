@@ -1,3 +1,8 @@
 theme: jekyll-theme-minimal
 title: Cool-zimo 项目文档
-description: FaceHub / GitHub Drive / 仓鼠
+description: FaceHub / GitHub Drive / 仓鼠 —— 架构、模块手册、开发者手册
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default
