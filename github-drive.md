@@ -123,11 +123,29 @@ await this.api.deleteFile(chunk.owner, chunk.repo, chunk.path, ...)
 
 ---
 
-## 6. 一个目录值得注意
+## 6. 仓库体积
+
+实测（API 查 tree，2026-09）：
 
 ```
-repos/github_drive/Users/feng/Desktop/github_drive/
+总条目      34
+blob 总体积 937,727 字节（约 916 KB）
 ```
 
-这是误提交进来的嵌套目录（把整个项目又塞了一份进去）。
-不影响运行，但让仓库体积翻倍。可以考虑清理。
+最大的几项：
+
+| 文件 | 大小 |
+|---|---|
+| `assets/icon-drive-512.png` | 210 KB |
+| `js/app.js` | 91 KB |
+| `assets/favicon.ico` | 83 KB |
+| `css/style.css` | 49 KB |
+
+**体积主要在图标资源上**，不是代码。真要瘦身，优先压 PNG 图标。
+
+> ⚠️ 早期版本文档里写过「`Users/feng/Desktop/github_drive/` 是误提交的嵌套目录，
+> 让仓库体积翻倍」—— **这个说法是错的**。
+> 实际查 GitHub tree，仓库里**完全没有 `Users/` 目录**。
+> 那个路径只存在于本地工作副本里（两个 1KB 的残留文件），已清理。
+> 跟仓鼠文档那次一样，属于没核实就写。
+
