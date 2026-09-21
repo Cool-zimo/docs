@@ -5,27 +5,64 @@ title: 项目文档
 # 📚 Cool-zimo 项目文档
 
 三个纯前端应用，全部托管在 GitHub Pages，数据都存在你自己的仓库里。
+**没有后端、没有数据库、没有中间人。**
 
-| 应用 | 做什么 | 在线地址 |
-|---|---|---|
-| **FaceHub** | 端到端加密的聊天 / 朋友圈 / 小程序 | <https://cool-zimo.github.io/FaceHub/> |
-| **GitHub Drive** | 把 GitHub 当网盘用 | <https://cool-zimo.github.io/github_drive/> |
-| **仓鼠** | GitHub 仓库管理面板 | <https://cool-zimo.github.io/cangshu/> |
+| 应用 | 做什么 | 在线 | 代码量 |
+|---|---|---|---|
+| **FaceHub** | 端到端加密聊天 / 朋友圈 / 小程序 | <https://cool-zimo.github.io/FaceHub/> | 8660 行 |
+| **GitHub Drive** | 把 GitHub 当网盘 | <https://cool-zimo.github.io/github_drive/> | 9843 行 |
+| **仓鼠** | GitHub 仓库管理面板 | <https://cool-zimo.github.io/cangshu/> | — |
 
-## 文档
+---
 
-- [FaceHub](facehub.md) —— 加密原理、仓库布局、朋友圈、小程序、AI 自动回复
-- [GitHub Drive](github-drive.md) —— 分片上传、仓库结构、并发实测
-- [仓鼠](cangshu.md) —— 配置同步、权限、批量管理
-- [账号互联](bridge.md) —— 三个应用怎么互认登录
+## 文档导航
 
-## 共同点
+### 架构与设计
 
-- **纯静态**，没有后端、没有埋点
-- Token 只存在浏览器 `localStorage`，只和 GitHub 官方 API 通信
-- 数据都在你自己的仓库里，不经过任何第三方服务器
+- **[整体架构](architecture.md)** —— 无后端约束、仓库即数据库、
+  消息流设计、三层缓存、模块依赖图。**建议先读这篇。**
+- **[设计决策记录](decisions.md)** —— 13 条决策，每条都写了
+  **被否决的方案和理由**。想改代码前建议看。
+
+### 模块手册
+
+- **[FaceHub](facehub.md)** —— crypto / api / group / attach / moments /
+  ai-reply / miniapp 逐模块说明
+- **[GitHub Drive](github-drive.md)** —— VFS、分片、回收站、多账号隔离
+- **[仓鼠](cangshu.md)** —— 配置同步、中文安全 base64
+
+### 开发
+
+- **[开发者手册](developer.md)** —— 本地开发、测试技巧、发布流程、
+  **10 个踩过的坑**（含两个致命 bug）
+- **[账号互联](bridge.md)** —— 三个应用怎么互认登录
+
+---
 
 ## 独立组件
 
-- [tiny-md](https://cool-zimo.github.io/tiny-md/demo.html) —— 零依赖 Markdown +
-  数学公式 + 代码高亮渲染库（MIT，可独立引用）
+**[tiny-md](https://cool-zimo.github.io/tiny-md/demo.html)** —— 零依赖
+Markdown + 数学公式 + 代码高亮渲染库（MIT，可独立引用）。
+
+```html
+<script src="https://cdn.jsdelivr.net/gh/Cool-zimo/tiny-md@main/tiny-md.js"></script>
+<script>TinyMD.injectCSS();</script>
+```
+
+---
+
+## 共同的设计原则
+
+1. **零外部依赖** —— 不引框架、不引 CDN 库。见 [D9](decisions.md#d9--为什么零外部依赖)
+2. **数据主权归用户** —— 全在自己的仓库里，不经第三方
+3. **公钥放公开处** —— 让异步通信成为可能。见 [D3](decisions.md#d3--长期身份密钥-vs-按会话密钥)
+4. **失败的代价最小化** —— 分片要小（重试只重传一片）、轮换失败不阻断移除
+
+---
+
+## ⚠️ 读之前要知道的三件事
+
+1. **私钥只在 localStorage**。换设备/清缓存 → 旧消息解不开。这是纯前端 E2E 的固有代价。
+2. **GitHub 无法真正删除数据**。删掉的 comment 仍在 Git 历史里。
+   FaceHub 里是密文所以影响小，但要心里有数。
+3. **Token 权限很大**。三个应用的 token 都能读写/删除你名下的仓库。用完建议 revoke。
