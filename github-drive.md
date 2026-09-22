@@ -27,7 +27,7 @@ title: GitHub Drive 模块手册
 | `i18n.js` | 836 | 多语言 |
 | `cangshu-link.js` | 330 | 与仓鼠联动 |
 | `config-sync.js` | 233 | 配置跨设备同步 |
-| `extension.js` | 289 | 浏览器扩展通信 + OAuth |
+| `extension.js` | 183 | 浏览器扩展通信 |
 | `icons.js` | 166 | 内联 SVG |
 
 ---
@@ -259,27 +259,42 @@ configFile = 'config.json';
 
 ---
 
-## 8. extension.js — 浏览器扩展 + OAuth
+## 8. extension.js — 浏览器扩展通信
 
 通过 `window.postMessage` 与浏览器扩展通信（扩展可提供 Token、代理 API 请求）。
 
-### ⚠️ OAuth clientSecret 硬编码在前端
+流程：
 
-```js
-this.clientId = 'Ov23liH51YfXFWysljeU';
-this.clientSecret = '20a8407220227eaac73c41e5f874f641037306d5';
-```
+1. 页面监听 `window.message`，只认 `source === 'github-drive-extension'`
+2. 扩展注入 `window.__GITHUB_DRIVE_EXTENSION__` 标记，页面据此判断是否已安装
+3. 调用走 `_sendMessage(type, data)`，返回 Promise
+4. 扩展回 `*_RESPONSE`，按 `requestId` 匹配 resolve
 
-**这是 OAuth App 的 client secret，出现在公开仓库的前端代码里。**
+消息类型：`GET_TOKEN` / `SET_TOKEN` / `CLEAR_TOKEN` / `GET_USER` / `API_REQUEST`。
 
-对公开的前端应用来说这其实**难以避免**（纯前端无法保密任何东西），
-但必须知道后果：
+> 注意 `event.source !== window` 这道检查 —— 不加的话任何 iframe 都能往里发消息。
 
-- 任何人都能拿这个 secret 冒充你的应用
-- **真正的安全边界是 redirect_uri**，GitHub 只回调白名单里的地址
+### 曾经的 OAuth 登录：已整体移除
 
-**建议**：去 GitHub OAuth App 设置里确认 redirect_uri 白名单严格，
-并考虑轮换这对凭据。
+早期版本在这里实现过 OAuth 登录，并且把 `client_id` / `client_secret`
+硬编码在源码里。**已全部删除**，原因：
+
+- **回调页从未存在** —— `redirectUri` 指向 `.../oauth_callback`，
+  但仓库里从来没有这个页面。所以这个功能**从来没跑通过**。
+- 凭据硬编码在公开仓库 = 公开，任何人都能拿走。
+- 查了 GitHub 官方文档后确认：无后端的静态站**没有完美方案**
+  （Web flow 和 PKCE 的 token 交换都要求 `client_secret`；
+  Device flow 虽不需要，但官方明确警告它"does not require redirect URIs
+  at all"，极易被钓鱼冒充，不适用于网页应用）。
+
+**如果有人 Fork 这个项目**：登录只走 Personal Access Token，不要再往里加 OAuth。
+
+### ⚠️ 如果你是从旧版本过来的
+
+那对凭据**仍在该仓库的 Git 历史里**（删文件不清除历史）。
+
+去 **GitHub Settings → Developer settings → OAuth Apps** 把那个 App 删掉，
+或重新生成 client secret。**轮换才是真正的止损**，光改代码没用。
 
 ---
 
