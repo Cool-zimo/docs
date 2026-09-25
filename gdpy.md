@@ -237,6 +237,34 @@ rm a.txt                        ← rm，但不是 -rf /
 ⚠️ 改这些常量之前先想清楚：改错一个就会导致**跨端读不到文件**，
 而且症状是「文件凭空消失」（其实还在 GitHub 上），很难排查。
 
+### 4.2 ⚠️ URL 里的中文必须 percent-encode（Windows 必现崩溃）
+
+报错长这样，对用户毫无提示性：
+
+```
+'ascii' codec can't encode characters in position 59-63: ordinal not in range(128)
+```
+
+**根因**：`http.client` 发送 request line 时用 **ascii** 编码 URL。
+文件名里只要有中文（Windows 上几乎必然），就会抛 `UnicodeEncodeError`。
+
+**为什么难查**：报错里说的是"position 59-63"，指 URL 第 59~63 个字符，
+跟用户看到的"分享失败"完全对不上。而且这是**标准库行为**，
+跟我们自己的代码逻辑无关，容易误判成业务逻辑 bug。
+
+修法分两层：
+
+1. **`api.raw()` 补上 `quote(path)`** —— 这是唯一漏掉的一处
+   （`get_file` / `put_file` / `delete_file` 都有，`raw` 没有）
+2. **`_req()` 里统一过 `_ascii_safe(url)`** —— 兜底，保证任何出口都不再崩
+
+> ★ `_ascii_safe()` 的设计要点：**URL 全 ASCII 时原样返回**。
+>   只对确实含非 ASCII 的 URL 做逐段 quote。
+>   不然 `%20` 会被二次编码成 `%2520` → 404，比崩溃更难排查。
+
+另外错误会写进 `{配置目录}/error.log`。
+Windows 弹窗里的文字没法复制，光靠 `showerror` 用户只能截图。
+
 ### 4.1 ⚠️ 配置同步的两个坑（改这块之前必读）
 
 网页版的 `github-drive-config/config.json` 是**所有配置的集合**，
@@ -416,6 +444,7 @@ python tests/test_core.py
 | 配置仓字段名用 `vfs` | 读不到网页版文件（应为 `fileIndex`） |
 | 配置仓整体覆盖写入 | **毁掉网页版的 repos/shares/usage** |
 | repoUsage 值格式混用 | `TypeError`（dict + int） |
+| URL 含中文未编码 | `UnicodeEncodeError: 'ascii' codec`（Windows 必现） |
 | 命令黑名单子串匹配 | 误杀 `cat /logs/shutdown_report.txt` |
 | plugin ID 由插件上报 | 权限模型形同虚设 |
 | 去掉运行时校验 | 插件可互相冒充 |
