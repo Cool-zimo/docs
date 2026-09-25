@@ -231,11 +231,64 @@ rm a.txt                        ← rm，但不是 -rf /
 | 分片大小 | 512 KB |
 | 大文件阈值 | >1MB 走 Git blob，≤1MB 走 Contents |
 | 存储仓 | `drive-storage-{YYYY-MM-DD}-{4位hex}`，私有 |
-| 配置仓 | `github-drive-config`（与网页版共用） |
+| 配置仓 | `github-drive-config`（与网页版共用，**字段名必须对齐**） |
 | 分享仓 | `gd-share-{6位hex}`，公开 + Pages |
 
 ⚠️ 改这些常量之前先想清楚：改错一个就会导致**跨端读不到文件**，
 而且症状是「文件凭空消失」（其实还在 GitHub 上），很难排查。
+
+### 4.1 ⚠️ 配置同步的两个坑（改这块之前必读）
+
+网页版的 `github-drive-config/config.json` 是**所有配置的集合**，
+不只有 VFS。`js/config-sync.js` 的 `exportConfig()` 写出来是这样：
+
+```json
+{
+  "version": 1, "updatedAt": "...",
+  "repos": [...], "fileIndex": {...}, "starred": [...],
+  "recent": [...], "shares": [...], "repoUsage": {...},
+  "storageConfig": {...}
+}
+```
+
+**坑一：字段名是 `fileIndex`，不是 `vfs`**
+
+早期版本读 `config.json['vfs']`，网页版压根没这个字段 →
+静默失败 → 用户看到「文件列表是空的」。
+
+**坑二：整体覆盖会毁掉网页版配置（更严重）**
+
+早期 `_push_vfs()` 直接 `put_file({'vfs': ...})`，
+`config.json` 被整体替换 → 网页版的 `repos` / `shares` /
+`repoUsage` / `storageConfig` / `starred` **全部丢失**。
+
+这不是「读不到」，是**破坏性写入**。所以同步逻辑独立成了
+`core/config_sync.py`，**强制走读-改-写**：
+
+```python
+cfg, sha = self._read_raw()      # 先读全量
+cfg['fileIndex'] = vfs           # 只改自己的字段
+cfg['vfs'] = vfs                 # 兼容别名
+self.api.put_file(..., sha=sha)  # 整体写回
+```
+
+未知字段原样保留（向前兼容）。409 SHA 冲突（网页版同时在写）
+自动重拉重试，最多 3 次。
+
+**坑三：`repoUsage` 的值格式两边不同**
+
+```
+web 版:  usage['owner/repo'] = {'size': N, 'updatedAt': ISO}
+桌面版:  usage['owner/repo'] = N
+```
+
+直接 `+=` 会 `TypeError`（dict + int 不能相加）。
+所以读写都要归一化：`normalize_usage()` / `denormalize_usage()`，
+写出时用**网页版格式**，这样两边都能读。
+
+> ★ 判断依据：这三个坑都是从 `js/config-sync.js` 的实际实现比对出来的，
+>   不是推测。改 config 相关代码前，先读那个文件的 `exportConfig()`。
+
 
 `config.py` 里的 `LEGACY_CHUNK_SIZES` 保留了 50MB/20MB/5MB 的迁移分支 ——
 这是网页版历史上用过的几个值，命中就拉回 512KB。**不要删**。
@@ -360,6 +413,9 @@ python tests/test_core.py
 | 坑 | 症状 |
 |---|---|
 | `children()` prefix 写错 | 文件列表永远为空 |
+| 配置仓字段名用 `vfs` | 读不到网页版文件（应为 `fileIndex`） |
+| 配置仓整体覆盖写入 | **毁掉网页版的 repos/shares/usage** |
+| repoUsage 值格式混用 | `TypeError`（dict + int） |
 | 命令黑名单子串匹配 | 误杀 `cat /logs/shutdown_report.txt` |
 | plugin ID 由插件上报 | 权限模型形同虚设 |
 | 去掉运行时校验 | 插件可互相冒充 |
