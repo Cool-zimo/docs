@@ -69,3 +69,5 @@ Markdown + 数学公式 + 代码高亮渲染库（MIT，可独立引用）。
 2. **GitHub 无法真正删除数据**。删掉的 comment 仍在 Git 历史里。
    FaceHub 里是密文所以影响小，但要心里有数。
 3. **Token 权限很大**。三个应用的 token 都能读写/删除你名下的仓库。用完建议 revoke。
+
+- [gdpy 插件开发手册](plugins.md) — 桌面插件生态、权限模型、四个内置插件
