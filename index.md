@@ -12,6 +12,7 @@ title: 项目文档
 | **FaceHub** | 端到端加密聊天 / 朋友圈 / 小程序 | <https://cool-zimo.github.io/FaceHub/> | 8660 行 |
 | **GitHub Drive** | 把 GitHub 当网盘 | <https://cool-zimo.github.io/github_drive/> | 9843 行 |
 | **仓鼠** | GitHub 仓库管理面板 | <https://cool-zimo.github.io/cangshu/> | — |
+| **gdpy** | Drive 桌面版（Python/Tkinter） | <https://cool-zimo.github.io/gdpy/> | — |
 
 ---
 
@@ -30,6 +31,8 @@ title: 项目文档
   ai-reply / miniapp 逐模块说明
 - **[GitHub Drive](github-drive.md)** —— VFS、分片、回收站、多账号隔离
 - **[仓鼠](cangshu.md)** —— 配置同步、中文安全 base64
+- **[gdpy 桌面版](gdpy.md)** —— 跨平台架构、分片兼容契约、
+  插件三层安全模型、**Windows 构建的两个坑**
 
 ### 开发
 
