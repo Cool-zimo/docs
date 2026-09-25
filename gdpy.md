@@ -461,3 +461,11 @@ python tests/test_core.py
 在子线程里直接改控件 = 随机崩溃，而且不报错 —— 极难排查。
 
 `app.py` 里的 `_bg()` / `_pump()` 就是这套机制，`_pump()` 是唯一的 UI 更新入口。
+
+## 插件生态
+
+桌面版有独立的插件生态（Python，能碰文件系统和进程），与网页版 HTML+JS 插件不兼容。
+
+四个内置插件：`folder-sync`、`image-compress`、`markdown-preview`、`auto-backup`。
+
+完整开发手册见 [插件开发手册](plugins.md)。
