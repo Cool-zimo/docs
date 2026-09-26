@@ -17,17 +17,17 @@ title: GitHub Drive 模块手册
 
 | 文件 | 行数 | 职责 |
 |---|---|---|
-| `ui.js` | 2793 | 界面渲染（最大的模块） |
-| `app.js` | 1911 | 主应用 + 插件市场 |
+| `ui.js` | 2748 | 界面渲染（最大的模块） |
+| `app.js` | 1900 | 主应用 + 插件市场 |
 | `storage.js` | 757 | 本地存储 + **VFS** |
 | `share.js` | 725 | 分享 |
 | `github-api.js` | 604 | REST 封装（含 Git 底层 API） |
 | `file-manager.js` | 546 | 上传/下载/分片 |
 | `bridge.js` | 577 | 跨应用互认 |
-| `i18n.js` | 836 | 多语言 |
+| `i18n.js` | 814 | 多语言 |
 | `cangshu-link.js` | 330 | 与仓鼠联动 |
 | `config-sync.js` | 233 | 配置跨设备同步 |
-| `extension.js` | 183 | 浏览器扩展通信 |
+| `extension.js` | 182 | 浏览器扩展通信 |
 | `icons.js` | 166 | 内联 SVG |
 
 ---
@@ -72,7 +72,12 @@ if (!vfs.folders || typeof vfs.folders !== 'object') vfs.folders = {};
 
 ```js
 repoNamePrefix: 'drive-storage',
-chunkSize: 512 * 1024,      // 512KB
+chunkSize: 512 * 1024,      // 512KB  —— 每片多大
+minChunkSize: 512 * 1024,   // 超过这个大小才分片（代码默认值）
+
+★ 线上实测：`minChunkSize` 的实际值是 **10MB**（见 usage-report.md）。
+  代码默认 512KB 与线上配置差 20 倍，而桌面版 `config.py` 用的正是 512KB。
+  详细影响与修法见 fd-report-drive.md 第 2 遍 ③。
 ```
 
 ⚠️ **与 FaceHub 的 2MB 不同**。Drive 场景是大量小文件，需要更细的重试粒度。
