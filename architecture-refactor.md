@@ -1,150 +1,194 @@
-# 架构手术报告 · 桌面版退成纯桥
+# 架构收口报告 · Python 退成纯桥
 
 **日期**：2026-09-26
-**版本**：gdpy v0.0.11 / github_drive（两处 js 修复）
+**版本**：gdpy v0.0.11
+**结果**：删除 1417 行，新增契约层与架构守护，测试 413 项全绿
 
 ---
 
-## ★ 我上一轮的方案前提是错的
+## ★ 先修正一个说法
 
-上一轮我说：
+我上一轮说"Python 退成纯桥还没做，现在该动这个手术"——
+**这个描述不准确。**
 
-> 现在 Python 里有 vfs.py / transfer.py / config_sync.py，
-> 前端 js 里有对应的，**同一套逻辑两份实现**
-
-核查后的真相：
+核查后发现：**webview 模式下 Python 早就是纯桥了。**
 
 ```
-webview_main.py 只 import 了 Bridge 和 server.start
-—— 完全不碰 vfs / transfer / share / config_sync
+webview_main.py  →  import Bridge + server
+bridge.py        →  只用 core.api._ascii_safe
+server.py        →  静态文件服务
 ```
 
-**不是"同一入口双实现"，是"两个入口各自实现，其中一个已废弃"。**
+业务模块（vfs / transfer / storage / share / config）
+**只有 `ui/app.py` 在用**——也就是早已废弃的 Tkinter 旧版。
 
-- webview 版（0.0.4 起）：业务逻辑 100% 在前端 js
-- Tkinter 版（`main.py`）：用 Python 业务层，**但已不构建**
+所以真正的状况不是"有两套实现在同时跑"，
+而是**有一套没人用的实现还躺在那里**，我还在为它写测试、为它修 bug。
 
-所以 Python 业务层在 webview 版里是**死代码**，
-还被 `--hidden-import` 强行打进 exe 白占体积。
+（比如 v0.0.9 修的 `minChunkSize 512KB → 10MB`，
+修的是一个**没有调用方**的常量。）
 
-> **架构早就已经是"纯桥"了。我要做的不是改造，是清扫。**
+这个区别很重要：
+- 如果是"两套在跑" → 紧急事故，立刻停一套
+- 如果是"一套是死的" → 清理，但要小心别删到活代码
+
+**实际是后者。** 而我在删的过程中真的误删了活代码测试，见下文。
 
 ---
 
-## 删除（1450 行）
+## 做了什么
 
-| 文件 | 行数 | 理由 |
+| 动作 | 内容 | 行数 |
 |---|---|---|
-| `main.py` | 33 | Tkinter 入口，已不构建 |
-| `gdrive/ui/app.py` | 477 | Tkinter 界面 |
-| `gdrive/ui/plugins_ui.py` | 122 | Tkinter 插件界面 |
-| `gdrive/core/vfs.py` | 296 | 前端 vfs.js 承担 |
-| `gdrive/core/transfer.py` | 273 | 前端 file-manager.js 承担 |
-| `gdrive/core/share.py` | 249 | 前端 share.js 承担 |
-| workflow hidden-import | — | 对应移除 |
+| 删除 | `core/vfs.py` `core/transfer.py` `core/storage.py` `core/share.py` | −1098 |
+| 删除 | `ui/app.py` `ui/plugins_ui.py`（Tkinter 旧版） | −599 |
+| 新增 | `core/contract.py`（契约层） | +119 |
+| 新增 | `tests/test_arch.py`（架构守护） | +185 |
+| 瘦身 | `config.py` 删掉 `DEFAULT_STORAGE_CONFIG` 全套 | −60 |
 
-## 保留并重新定位
+---
 
-| 模块 | 新定位 |
+## 新架构
+
+```
+业务逻辑  →  只存在于 web/js/（前端实现，唯一真实来源）
+
+Python    →  只做三件事：
+              1. http_request   GitHub API 代理（浏览器有 CORS）
+              2. 本地文件读写 / 文件对话框
+              3. exec           插件能力
+
+Python 不再实现：上传、分片、配额计算、仓库选择、分享
+```
+
+### 关键设计：不定义业务默认值
+
+`config.py` 里整套 `DEFAULT_STORAGE_CONFIG` 删掉了。
+
+```python
+# 曾经的 bug：
+#   Python 写 minChunkSize = 512KB
+#   线上真实值 = 10MB（用户在网页版保存设置时写进 config.json 的）
+#   → 桌面版一写回 config.json，就把用户的分片策略改掉了
+```
+
+新规则写在文件里：
+
+> 需要契约值 → 从线上 config.json 读
+> 读不到 → 报错，**不用本地默认值兜底**
+>
+> ★ 想加 `DEFAULT_` 常量前先问：
+>   我在**定义**它，还是在**读取**它？
+>   如果是定义 —— 那就是在制造下一处漂移。
+
+---
+
+## 契约层 contract.py
+
+只放与 js 有**格式约定**的东西：
+
+| 内容 | 为什么必须留 |
 |---|---|
-| `config_sync.py` | **维护工具专用**的「读-改-写」写入层。应用运行时完全不碰 config.json |
-| `maintain.py` / `recover.py` | 桌面独有价值，前端 js 无对应实现 |
-| `api.py` / `config.py` / `plugins.py` / `webview/*` | 纯桥 |
+| `DRIVE_HOME` | VFS 根路径，跨端一致 |
+| `_b36(n)` | 与 JS `toString(36)` 同形 |
+| `is_chunk_dir(name)` | 识别 js 生成的随机分片目录 |
 
-## 抢救：三个纯函数不该跟着埋掉
+**`_b36` 的分量**：js 用它生成分片目录 `mt` + `_b36(Date.now())`。
+56MB 文件丢失事件的根因就是这种目录不断累积、旧目录从不删除。
+Python 用它**识别**这类目录（扫描孤儿），不用于生成。
 
-`human_size` / `breadcrumb_segments` / `shorten` 移到新模块
-`gdrive/core/textutil.py` —— 不依赖 VFS 数据结构，
-且与前端存在**显示契约**（格式必须一致）。
+### 用真 node 验证过
 
----
+| n | JS `toString(36)` | Python `_b36` |
+|---|---|---|
+| 0 | `0` | `0` |
+| 35 | `z` | `z` |
+| 36 | `10` | `10` |
+| 123456789 | `21i3v9` | `21i3v9` |
+| 1760000000000 | `mgj6k3cw` | `mgj6k3cw` |
 
-## 手术暴露的真 bug：js 侧缺保护
-
-Python 侧 v0.0.9 修过「超大分块不无限 `create_repo`」，
-但 **js 的 `autoSelectRepo` 从来没修**——而线上实际在跑的是 js。
-
-```javascript
-if (config.autoCreateRepo) {
-    return await this.autoCreateStorageRepo();   // ← 无上限校验
-}
-```
-
-后果：`canRepoFit` 永远 false → 每个分片都 `create_repo`。
-500MB × 512KB 分片 = **上千次 create_repo**，
-而新建的仓库同样装不下——问题没解决只是被放大。
-
-**已在 js 侧加上限校验，js 测试 6 项。**
-
-> 这是双实现最隐蔽的代价：我在 Python 侧修了 bug，以为修好了，
-> 实际用户跑的那份从来没修。**修 bug 前要先确认修的是不是上线那份。**
+**旧断言是 `_b36(x) == _b36(x)`——恒真，等于没测。**
+现在用 node 跑出来的真实对照值写死在测试里。
 
 ---
 
-## 手术中自己写出的 bug（实跑才暴露）
+## 架构守护测试（29 项）
 
-`tools/maintain_cli.py` 用了 `scan()` 的
-`file_count` / `recorded_bytes` / `actual_bytes`——
-**`scan()` 根本没返回这些键**。
+> **删代码是一次性的，退化是持续的压力。**
 
-表现：CLI 显示「记录文件 0」，实际有 59 个。
+下一个写功能的人（包括未来的我）最自然的想法就是
+"这个计算 Python 做起来方便"，然后在 `core/` 下加一个模块。
+半年后又是两套实现。
 
-修在源头（`maintain.py` 补统计字段）+ 2 项防复发断言。
+这个文件是那道闸——**不是禁止写 Python，而是让它无法悄悄发生**。
 
-> 跟 V0.0.4 的 `idm[1]` 同类：**写了调用却没核对返回结构。**
-> 如果没实跑 CLI，这个 bug 会跟着发布。
+```
+★ core/ 下不存在业务实现模块（vfs/transfer/storage/share）
+★ ui/app.py（Tkinter 旧版）已移除
+★ config.py 无 DEFAULT_ 常量（用 AST 扫，不是正则）
+★ config.py 不含 minChunkSize / maxRepoSize 等业务字段
+★ contract.py 不碰 IO（urllib / requests / open）
+★ 运行时入口不 import 业务模块
+★ bridge 不含业务方法（upload / pick_repo / split_file …）
+★ bridge 提供 http_request / read_file_b64 / write_file_b64 / exec_command
+★ 插件只用本地能力（8 个接口白名单，不含任何 GitHub 业务能力）
+```
+
+`config.py` 那条用 **AST 扫赋值语句**，不是正则匹配——
+正则会被注释里的 `DEFAULT_` 字样骗过去。
 
 ---
 
-## 新增 `tools/maintain_cli.py`
+## ★★ 过程中自己犯的三个错
 
-```
-python tools/maintain_cli.py scan      # 体检
-python tools/maintain_cli.py recover   # 找回孤儿
-```
+这三个都写进代码注释了，因为**都是"看起来对、实际错"的类型**。
 
-**为什么不做成界面按钮**：`web/` 是从 github_drive 同步来的
-（`tools/sync_web.py`），直接改会被下次同步覆盖。
-界面入口必须提交到 github_drive（web 端），不是这里。
+### 错误 1：删测试连带删掉了变量定义
 
-CLI 保证能力不丢失，且不受同步影响。
+删 `【1】-【9】` 那段测试时，把里面定义的 `tmpdir` 一起删了，
+后面的用例 `NameError`。
 
-### 实跑结果
+> **删测试不能只删"看起来无关"的段落，删完要跑一遍。**
 
-```
-记录文件     : 59
-记录占用     : 133.3 MB
-实际占用     : 133.3 MB
-★ 孤儿      : 1 个 0 B（.gitkeep，跳过）
-★ 幽灵      : 0 个
-```
+### 错误 2：以为活代码随模块一起下线了
 
-幽灵为 0 —— 说明恢复的 44 个文件 chunks 都真实存在，恢复有效。
+以为 `breadcrumb_segments` / `shorten` 随 `vfs.py` 一起没了，删了对应测试。
 
----
+实际它们**早被抽到 `core/textutil.py`**，是活代码
+（`tools/maintain_cli.py` 在用 `human_size`）。
 
-## ⚠️ 发现的新问题：记账全是 0
+> **删测试前必须确认被删的「函数」还活着，不能只看「模块」在不在。**
 
-```
-drive-storage-2026-08-30-8696  记账 0 B   实际 77.1 MB
-drive-storage-2026-08-27-c4aa  记账 0 B   实际 40.9 MB
-drive-storage-2026-08-25-ft3j  记账 0 B   实际 14.2 MB
-drive-storage-2026-08-25-hu15  记账 0 B   实际  1.1 MB
-```
+### 错误 3：刚消除双实现，又造了一处
 
-`repoUsage` 完全没写。后果：`canRepoFit` 认为所有仓库都是空的，
-一直往里写直到 API 返回超限才暴露。
+我在 `contract.py` 和 `textutil.py` 各写了一份 `human_size`——
+**新的双实现**，而且是在做"消除双实现"的提交里造出来的。
 
-不紧急（自动建仓会兜底），但会让"仓库快满"预警失效。
+已合并到 `textutil.py`。判断标准写进注释了：
+
+> 这个函数与 js 有格式约定吗？没有 → 不是契约，不放 contract.py。
 
 ---
 
-## 待办
+## 验证
+
+| 项 | 结果 |
+|---|---|
+| 测试 | **413 项全绿**（core 53 / arch 29 / config_sync 29 / plugins 135 / security 57 / url 16 / webview 60 / maintain 22 / recover 12） |
+| 模块导入冒烟 | 10/10 保留模块全部可导入 |
+| 打包资源检查 | 通过（无未声明的运行时资源） |
+| 残留引用扫描 | 仅剩注释提及，无代码引用 |
+
+收口前 417 项 → 现在 413 项。
+净减 4 项：删掉的死代码测试 ≈ 新增的架构守护测试。
+
+---
+
+## 未做 / 待确认
 
 | 项 | 说明 |
 |---|---|
-| 界面入口 | `scan` / `recover` 加到 web 端 UI（要提交到 github_drive） |
-| 面包屑 | 前端 js 无面包屑。Python 参考实现已移到 `textutil.py`，需在 js 实现 |
-| 记账写入 | `repoUsage` 全 0，需排查为何没写 |
-| js 回滚验证 | `subtractFromRepoUsage` 有 3 处调用，但回滚正确性未验证 |
-| `_recovered` 44 个文件 | 等你确认留哪些、重名的留哪个版本 |
+| `maintain_cli.py` 仍依赖 `Config` 类 | 它是离线维护工具，保留合理；但它读的本地 config 缓存与线上 config.json 的关系尚未厘清 |
+| js 侧 `subtractFromRepoUsage` 正确性未验证 | test_security【6】标了"待验证"——记账扣减是这次 42% 偏差的另一半成因 |
+| `pendingOrphanChunks` 无持久化 | 清理失败的分片只记在内存，刷新即丢 |
+| 44 个恢复文件待用户确认 | 在 `/drive_home/_recovered` |
