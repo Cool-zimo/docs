@@ -12,7 +12,6 @@ title: 项目文档
 | **FaceHub** | 端到端加密聊天 / 朋友圈 / 小程序 | <https://cool-zimo.github.io/FaceHub/> | 8660 行 |
 | **GitHub Drive** | 把 GitHub 当网盘 | <https://cool-zimo.github.io/github_drive/> | 9843 行 |
 | **仓鼠** | GitHub 仓库管理面板 | <https://cool-zimo.github.io/cangshu/> | — |
-| **gdpy** | Drive 桌面版（Python/Tkinter） | <https://cool-zimo.github.io/gdpy/> | — |
 
 ---
 
@@ -31,11 +30,12 @@ title: 项目文档
   ai-reply / miniapp 逐模块说明
 - **[GitHub Drive](github-drive.md)** —— VFS、分片、回收站、多账号隔离
 - **[仓鼠](cangshu.md)** —— 配置同步、中文安全 base64
-- **[gdpy 桌面版](gdpy.md)** —— 跨平台架构、分片兼容契约、
-  插件三层安全模型、**Windows 构建的两个坑**
 
 ### 开发
 
+- **[fd 检查法](fd-check.md)** —— 改完代码必须走完的固定流程：
+  三遍深度检查（静态 / 契约一致性 / 失败路径）、产物环境冒烟测试、
+  三要素报告、非代码收尾检查
 - **[开发者手册](developer.md)** —— 本地开发、测试技巧、发布流程、
   **10 个踩过的坑**（含两个致命 bug）
 - **[账号互联](bridge.md)** —— 三个应用怎么互认登录
@@ -69,5 +69,3 @@ Markdown + 数学公式 + 代码高亮渲染库（MIT，可独立引用）。
 2. **GitHub 无法真正删除数据**。删掉的 comment 仍在 Git 历史里。
    FaceHub 里是密文所以影响小，但要心里有数。
 3. **Token 权限很大**。三个应用的 token 都能读写/删除你名下的仓库。用完建议 revoke。
-
-- [gdpy 插件开发手册](plugins.md) — 桌面插件生态、权限模型、四个内置插件
